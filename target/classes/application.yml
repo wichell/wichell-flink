@@ -1,0 +1,95 @@
+# ============================================
+# Spring Boot + Flink 演示项目配置文件
+# ============================================
+
+server:
+  port: 8888
+
+spring:
+  application:
+    name: wichell-flink-demo
+
+# ============================================
+# Flink 配置
+# ============================================
+flink:
+  # 执行环境配置
+  execution:
+    # 并行度 - 影响任务的并发处理能力
+    parallelism: 4
+    # 运行模式: streaming(流处理) 或 batch(批处理)
+    runtime-mode: streaming
+
+  # 检查点配置
+  checkpoint:
+    # 是否启用检查点
+    enabled: true
+    # 检查点间隔（毫秒）
+    interval: 60000
+    # 检查点超时时间（毫秒）
+    timeout: 600000
+    # 检查点存储路径
+    storage-path: file:///tmp/flink-checkpoints
+    # 最小间隔时间（毫秒）
+    min-pause: 500
+    # 最大并发检查点数量
+    max-concurrent: 1
+
+  # 状态后端配置
+  state-backend:
+    # 类型: hashmap(内存), rocksdb(磁盘)
+    type: hashmap
+    # RocksDB 本地路径（仅当 type=rocksdb 时有效）
+    rocksdb-path: /tmp/flink-rocksdb
+
+  # 重启策略配置
+  restart-strategy:
+    # 类型: fixed-delay(固定延迟), failure-rate(失败率), none(不重启)
+    type: fixed-delay
+    # 最大重启次数
+    attempts: 3
+    # 重启延迟（秒）
+    delay: 10
+
+# ============================================
+# Kafka 连接配置（示例）
+# ============================================
+kafka:
+  bootstrap-servers: localhost:9092
+  consumer:
+    group-id: flink-demo-group
+  topics:
+    input: flink-input-topic
+    output: flink-output-topic
+
+# ============================================
+# 数据库配置（示例）
+# ============================================
+datasource:
+  url: jdbc:mysql://localhost:3306/flink_demo?useSSL=false&serverTimezone=UTC
+  username: root
+  password: root
+  driver-class-name: com.mysql.cj.jdbc.Driver
+
+# ============================================
+# 日志配置
+# ============================================
+logging:
+  level:
+    root: INFO
+    com.wichell.flink: DEBUG
+    org.apache.flink: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# ============================================
+# Actuator 监控配置
+# ============================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
