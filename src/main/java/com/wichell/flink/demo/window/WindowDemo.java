@@ -1,6 +1,9 @@
 package com.wichell.flink.demo.window;
 
+import com.wichell.flink.function.TemperatureAverageAggregate;
 import com.wichell.flink.model.SensorReading;
+import com.wichell.flink.source.SensorSourceFunction;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
@@ -9,7 +12,6 @@ import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.*;
 import org.apache.flink.streaming.api.windowing.time.Time;
@@ -18,11 +20,8 @@ import org.apache.flink.util.Collector;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.Random;
+
+import static com.wichell.flink.util.FlinkUtils.formatTimestamp;
 
 /**
  * Flink 窗口操作详细演示
@@ -62,11 +61,9 @@ import java.util.Random;
  *
  * @author wichell
  */
+@Slf4j
 @Component
 public class WindowDemo {
-
-    private static final DateTimeFormatter TIME_FORMATTER =
-            DateTimeFormatter.ofPattern("HH:mm:ss");
 
     /**
      * 演示滚动窗口（Tumbling Window）
@@ -82,7 +79,7 @@ public class WindowDemo {
      * - 每天的日报生成
      */
     public void demonstrateTumblingWindow(StreamExecutionEnvironment env) throws Exception {
-        System.out.println("\n========== 滚动窗口演示 ==========");
+        com.wichell.flink.util.FlinkUtils.printSeparator("滚动窗口演示");
 
         // 创建传感器数据源
         DataStream<SensorReading> sensorStream = createSensorSource(env);
@@ -186,7 +183,7 @@ public class WindowDemo {
      * - 滚动计算最近 1 小时的 Top N
      */
     public void demonstrateSlidingWindow(StreamExecutionEnvironment env) throws Exception {
-        System.out.println("\n========== 滑动窗口演示 ==========");
+        com.wichell.flink.util.FlinkUtils.printSeparator("滑动窗口演示");
 
         DataStream<SensorReading> sensorStream = createSensorSource(env);
 
@@ -208,7 +205,7 @@ public class WindowDemo {
                 .window(SlidingEventTimeWindows.of(Time.seconds(30), Time.seconds(10)))
                 .aggregate(
                         // 使用增量聚合（AggregateFunction）提高效率
-                        new AverageAggregate(),
+                        new TemperatureAverageAggregate(),
                         // 使用 ProcessWindowFunction 获取窗口信息
                         new ProcessWindowFunction<Double, String, String, TimeWindow>() {
                             @Override
@@ -274,7 +271,7 @@ public class WindowDemo {
      * - 交易会话统计
      */
     public void demonstrateSessionWindow(StreamExecutionEnvironment env) throws Exception {
-        System.out.println("\n========== 会话窗口演示 ==========");
+        com.wichell.flink.util.FlinkUtils.printSeparator("会话窗口演示");
 
         DataStream<SensorReading> sensorStream = createSensorSource(env);
 
@@ -380,7 +377,7 @@ public class WindowDemo {
      *    - ProcessWindowFunction 获取窗口信息
      */
     public void demonstrateWindowFunctions(StreamExecutionEnvironment env) throws Exception {
-        System.out.println("\n========== 窗口函数演示 ==========");
+        com.wichell.flink.util.FlinkUtils.printSeparator("窗口函数演示");
 
         DataStream<SensorReading> sensorStream = createSensorSource(env);
 
@@ -461,7 +458,7 @@ public class WindowDemo {
                 .window(TumblingEventTimeWindows.of(Time.seconds(10)))
                 .aggregate(
                         // 增量计算平均值
-                        new AverageAggregate(),
+                        new TemperatureAverageAggregate(),
                         // 添加窗口信息
                         new ProcessWindowFunction<Double, String, String, TimeWindow>() {
                             @Override
@@ -498,7 +495,7 @@ public class WindowDemo {
      * 3. 使用侧输出流收集超时数据
      */
     public void demonstrateWatermarkAndLateness(StreamExecutionEnvironment env) throws Exception {
-        System.out.println("\n========== Watermark 和延迟数据处理演示 ==========");
+        com.wichell.flink.util.FlinkUtils.printSeparator("Watermark 和延迟数据处理演示");
 
         DataStream<SensorReading> sensorStream = createSensorSource(env);
 
@@ -545,54 +542,14 @@ public class WindowDemo {
                 .print("延迟数据");
     }
 
-    // ==================== 辅助类和方法 ====================
+    // ==================== 辅助方法 ====================
 
-    /**
-     * 平均值聚合函数
-     *
-     * 使用 Tuple2<Double, Integer> 作为累加器
-     * - f0: 温度总和
-     * - f1: 数据条数
-     */
-    public static class AverageAggregate
-            implements AggregateFunction<SensorReading, Tuple2<Double, Integer>, Double> {
-
-        @Override
-        public Tuple2<Double, Integer> createAccumulator() {
-            return Tuple2.of(0.0, 0);
-        }
-
-        @Override
-        public Tuple2<Double, Integer> add(SensorReading reading, Tuple2<Double, Integer> acc) {
-            return Tuple2.of(acc.f0 + reading.getTemperature(), acc.f1 + 1);
-        }
-
-        @Override
-        public Double getResult(Tuple2<Double, Integer> acc) {
-            return acc.f1 > 0 ? acc.f0 / acc.f1 : 0.0;
-        }
-
-        @Override
-        public Tuple2<Double, Integer> merge(Tuple2<Double, Integer> acc1, Tuple2<Double, Integer> acc2) {
-            return Tuple2.of(acc1.f0 + acc2.f0, acc1.f1 + acc2.f1);
-        }
-    }
-
-    /**
-     * 格式化时间戳
-     */
-    private static String formatTimestamp(long timestamp) {
-        return LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(timestamp),
-                ZoneId.systemDefault()
-        ).format(TIME_FORMATTER);
-    }
 
     /**
      * 创建带有事件时间的传感器数据源
      */
     private DataStream<SensorReading> createSensorSource(StreamExecutionEnvironment env) {
-        return env.addSource(new SensorSourceFunction())
+        return env.addSource(SensorSourceFunction.builder().build())
                 .assignTimestampsAndWatermarks(
                         WatermarkStrategy
                                 // 允许 5 秒的乱序
@@ -608,56 +565,56 @@ public class WindowDemo {
      * 创建处理时间数据源（无 Watermark）
      */
     private DataStream<SensorReading> createProcessingTimeSource(StreamExecutionEnvironment env) {
-        return env.addSource(new SensorSourceFunction());
+        return env.addSource(SensorSourceFunction.builder().build());
     }
 
     /**
-     * 模拟传感器数据源
+     * 运行指定的窗口演示
+     *
+     * @param env Flink 执行环境
+     * @param demoName 要运行的演示名称，可选值：
+     *                 - "tumbling": 滚动窗口
+     *                 - "sliding": 滑动窗口
+     *                 - "session": 会话窗口
+     *                 - "functions": 窗口函数
+     *                 - "watermark": Watermark 和延迟数据
      */
-    private static class SensorSourceFunction implements SourceFunction<SensorReading> {
-        private volatile boolean running = true;
-        private final Random random = new Random();
+    public void runDemo(StreamExecutionEnvironment env, String demoName) throws Exception {
+        com.wichell.flink.util.FlinkUtils.printSeparator("Flink 窗口操作演示 - " + demoName);
 
-        @Override
-        public void run(SourceContext<SensorReading> ctx) throws Exception {
-            String[] sensorIds = {"sensor_1", "sensor_2", "sensor_3"};
-
-            while (running) {
-                for (String sensorId : sensorIds) {
-                    SensorReading reading = SensorReading.builder()
-                            .sensorId(sensorId)
-                            .timestamp(System.currentTimeMillis())
-                            .temperature(20 + random.nextDouble() * 30)
-                            .humidity(40 + random.nextDouble() * 40)
-                            .location("room_" + sensorId.split("_")[1])
-                            .build();
-
-                    ctx.collect(reading);
-                }
-                Thread.sleep(1000);  // 每秒生成一批数据
-            }
+        switch (demoName.toLowerCase()) {
+                case "tumbling":
+                demonstrateTumblingWindow(env);
+                break;
+            case "sliding":
+                demonstrateSlidingWindow(env);
+                break;
+            case "session":
+                demonstrateSessionWindow(env);
+                break;
+            case "functions":
+                demonstrateWindowFunctions(env);
+                break;
+            case "watermark":
+                demonstrateWatermarkAndLateness(env);
+                break;
+            default:
+                log.error("未知的演示名称: {}，可选值: tumbling, sliding, session, functions, watermark", demoName);
+                return;
         }
 
-        @Override
-        public void cancel() {
-            running = false;
-        }
+        env.execute("Window Demo - " + demoName);
     }
 
     /**
      * 运行所有窗口演示
      */
     public void runAllDemos(StreamExecutionEnvironment env) throws Exception {
-        System.out.println("\n" + "=".repeat(60));
-        System.out.println("    Flink 窗口操作演示");
-        System.out.println("=".repeat(60));
+        com.wichell.flink.util.FlinkUtils.printSeparator("Flink 窗口操作演示");
 
-        // 选择一个演示运行
-        //demonstrateTumblingWindow(env);
-        // demonstrateSlidingWindow(env);
-        // demonstrateSessionWindow(env);
-        // demonstrateWindowFunctions(env);
-         demonstrateWatermarkAndLateness(env);
+        // 默认运行 Watermark 演示
+        // 可根据需要修改为其他演示
+        runDemo(env, "watermark");
 
         env.execute("Window Demo");
     }
