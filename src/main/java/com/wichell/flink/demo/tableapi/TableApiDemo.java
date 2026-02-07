@@ -582,4 +582,17 @@ public class TableApiDemo {
 
         env.execute("Table API Demo");
     }
+
+    /**
+     * 异步运行所有 Table API 演示，返回 JobClient 用于作业控制
+     */
+    public org.apache.flink.core.execution.JobClient runAllDemosAsync(StreamExecutionEnvironment env) throws Exception {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("    Flink Table API 和 SQL 演示");
+        System.out.println("=".repeat(60));
+
+        demonstrateTableApiBasics(env);
+
+        return env.executeAsync("Table API Demo");
+    }
 }

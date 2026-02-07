@@ -493,4 +493,18 @@ public class CheckpointDemo {
 
         env.execute("Checkpoint Demo");
     }
+
+    /**
+     * 异步运行检查点演示，返回 JobClient 用于作业控制
+     */
+    public org.apache.flink.core.execution.JobClient runDemoAsync(StreamExecutionEnvironment env) throws Exception {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("    Flink 检查点演示");
+        System.out.println("=".repeat(60));
+
+        demonstrateCheckpointConfig(env);
+        demonstrateStateRecovery(env);
+
+        return env.executeAsync("Checkpoint Demo");
+    }
 }

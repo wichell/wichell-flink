@@ -10,6 +10,7 @@ import com.wichell.flink.demo.tableapi.TableApiDemo;
 import com.wichell.flink.demo.window.WindowDemo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.springframework.stereotype.Service;
 
@@ -39,8 +40,11 @@ public class FlinkJobService {
     private final ConnectorDemo connectorDemo;
     private final MysqlCdcDemo mysqlCdcDemo;
 
-    // 存储正在运行的作业
+    // 存储正在运行的作业 Future
     private final ConcurrentHashMap<String, CompletableFuture<Void>> runningJobs = new ConcurrentHashMap<>();
+
+    // 存储 Flink JobClient，用于真正停止作业
+    private final ConcurrentHashMap<String, JobClient> jobClients = new ConcurrentHashMap<>();
 
     /**
      * 运行 DataStream 基础演示
@@ -52,10 +56,10 @@ public class FlinkJobService {
      * - Union, Connect 多流操作
      */
     public String runDataStreamDemo() {
-        return runDemo("datastream-demo", () -> {
+        return runDemoWithJobClient("datastream-demo", env -> {
             log.info("启动 DataStream 基础演示...");
             try {
-                dataStreamDemo.runAllDemos(createNewEnv());
+                return dataStreamDemo.runAllDemosAsync(env);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -73,10 +77,10 @@ public class FlinkJobService {
      * - Watermark 和延迟数据处理
      */
     public String runWindowDemo() {
-        return runDemo("window-demo", () -> {
+        return runDemoWithJobClient("window-demo", env -> {
             log.info("启动窗口操作演示...");
             try {
-                windowDemo.runAllDemos(createNewEnv());
+                return windowDemo.runAllDemosAsync(env);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -95,10 +99,10 @@ public class FlinkJobService {
      * - 定时器与状态
      */
     public String runStateDemo() {
-        return runDemo("state-demo", () -> {
+        return runDemoWithJobClient("state-demo", env -> {
             log.info("启动状态管理演示...");
             try {
-                stateDemo.runAllDemos(createNewEnv());
+                return stateDemo.runAllDemosAsync(env);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -115,10 +119,10 @@ public class FlinkJobService {
      * - 状态恢复
      */
     public String runCheckpointDemo() {
-        return runDemo("checkpoint-demo", () -> {
+        return runDemoWithJobClient("checkpoint-demo", env -> {
             log.info("启动检查点演示...");
             try {
-                checkpointDemo.runDemo(createNewEnv());
+                return checkpointDemo.runDemoAsync(env);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -136,10 +140,10 @@ public class FlinkJobService {
      * - 用户自定义函数 (UDF)
      */
     public String runTableApiDemo() {
-        return runDemo("tableapi-demo", () -> {
+        return runDemoWithJobClient("tableapi-demo", env -> {
             log.info("启动 Table API 演示...");
             try {
-                tableApiDemo.runAllDemos(createNewEnv());
+                return tableApiDemo.runAllDemosAsync(env);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -157,10 +161,10 @@ public class FlinkJobService {
      * - 量词
      */
     public String runCepDemo() {
-        return runDemo("cep-demo", () -> {
+        return runDemoWithJobClient("cep-demo", env -> {
             log.info("启动 CEP 演示...");
             try {
-                cepDemo.runAllDemos(createNewEnv());
+                return cepDemo.runAllDemosAsync(env);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -177,10 +181,10 @@ public class FlinkJobService {
      * - 自定义 Source
      */
     public String runConnectorDemo() {
-        return runDemo("connector-demo", () -> {
+        return runDemoWithJobClient("connector-demo", env -> {
             log.info("启动连接器演示...");
             try {
-                connectorDemo.runAllDemos(createNewEnv());
+                return connectorDemo.runAllDemosAsync(env);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -198,10 +202,10 @@ public class FlinkJobService {
      * 注意：需要 MySQL 开启 Binlog 并配置正确的权限
      */
     public String runMysqlCdcDemo() {
-        return runDemo("mysql-cdc-demo", () -> {
+        return runDemoWithJobClient("mysql-cdc-demo", env -> {
             log.info("启动 MySQL CDC 演示...");
             try {
-                mysqlCdcDemo.runAllDemos(createNewEnv());
+                return mysqlCdcDemo.runDemoAsync(env, "sync");
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -215,11 +219,30 @@ public class FlinkJobService {
      * @return 停止结果
      */
     public String stopDemo(String jobName) {
+        // 先尝试取消 Flink 作业
+        JobClient jobClient = jobClients.get(jobName);
+        if (jobClient != null) {
+            try {
+                log.info("正在取消 Flink 作业 {}...", jobName);
+                jobClient.cancel().get(); // 等待作业真正取消
+                log.info("Flink 作业 {} 已取消", jobName);
+            } catch (Exception e) {
+                log.warn("取消 Flink 作业 {} 时出现异常: {}", jobName, e.getMessage());
+            } finally {
+                jobClients.remove(jobName);
+            }
+        }
+
+        // 然后取消 CompletableFuture
         CompletableFuture<Void> job = runningJobs.get(jobName);
         if (job != null) {
             job.cancel(true);
             runningJobs.remove(jobName);
             log.info("作业 {} 已停止", jobName);
+            return "作业 " + jobName + " 已停止";
+        }
+
+        if (jobClient != null) {
             return "作业 " + jobName + " 已停止";
         }
         return "作业 " + jobName + " 未运行";
@@ -253,15 +276,56 @@ public class FlinkJobService {
                 demoRunner.run();
                 log.info("作业 {} 执行完成", jobName);
             } catch (Exception e) {
-                log.error("作业 {} 执行失败: {}", jobName, e.getMessage(), e);
-                // 打印完整的异常链
-                Throwable cause = e.getCause();
-                while (cause != null) {
-                    log.error("  Caused by: {}", cause.getMessage());
-                    cause = cause.getCause();
+                // 如果是被取消的，不打印错误
+                if (e.getCause() instanceof org.apache.flink.runtime.client.JobCancellationException) {
+                    log.info("作业 {} 已被取消", jobName);
+                } else {
+                    log.error("作业 {} 执行失败: {}", jobName, e.getMessage(), e);
+                    Throwable cause = e.getCause();
+                    while (cause != null) {
+                        log.error("  Caused by: {}", cause.getMessage());
+                        cause = cause.getCause();
+                    }
                 }
             } finally {
                 runningJobs.remove(jobName);
+                jobClients.remove(jobName);
+            }
+        });
+
+        runningJobs.put(jobName, future);
+        return "作业 " + jobName + " 已启动，请查看控制台输出";
+    }
+
+    /**
+     * 运行演示作业（支持保存 JobClient）
+     */
+    private String runDemoWithJobClient(String jobName, java.util.function.Function<StreamExecutionEnvironment, org.apache.flink.core.execution.JobClient> demoRunner) {
+        if (runningJobs.containsKey(jobName)) {
+            return "作业 " + jobName + " 已在运行中";
+        }
+
+        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+            try {
+                log.info("作业 {} 开始执行...", jobName);
+                StreamExecutionEnvironment newEnv = createNewEnv();
+                JobClient client = demoRunner.apply(newEnv);
+                if (client != null) {
+                    jobClients.put(jobName, client);
+                    // 等待作业完成
+                    client.getJobExecutionResult().get();
+                }
+                log.info("作业 {} 执行完成", jobName);
+            } catch (Exception e) {
+                if (e.getCause() instanceof org.apache.flink.runtime.client.JobCancellationException
+                    || e instanceof java.util.concurrent.CancellationException) {
+                    log.info("作业 {} 已被取消", jobName);
+                } else {
+                    log.error("作业 {} 执行失败: {}", jobName, e.getMessage(), e);
+                }
+            } finally {
+                runningJobs.remove(jobName);
+                jobClients.remove(jobName);
             }
         });
 

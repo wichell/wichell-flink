@@ -619,4 +619,15 @@ public class WindowDemo {
         // 注意: runDemo 内部已调用 env.execute()，无需再次调用
         runDemo(env, "tumbling");
     }
+
+    /**
+     * 异步运行窗口演示，返回 JobClient 用于作业控制
+     */
+    public org.apache.flink.core.execution.JobClient runAllDemosAsync(StreamExecutionEnvironment env) throws Exception {
+        com.wichell.flink.util.FlinkUtils.printSeparator("Flink 窗口操作演示");
+
+        demonstrateTumblingWindow(env);
+
+        return env.executeAsync("Window Demo - tumbling");
+    }
 }

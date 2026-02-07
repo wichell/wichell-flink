@@ -546,4 +546,23 @@ public class DataStreamBasicDemo {
         // 执行作业
         env.execute("DataStream Basic Demo");
     }
+
+    /**
+     * 异步运行所有演示，返回 JobClient 用于作业控制
+     */
+    public org.apache.flink.core.execution.JobClient runAllDemosAsync(StreamExecutionEnvironment env) throws Exception {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("    DataStream API 核心操作演示");
+        System.out.println("=".repeat(60));
+
+        demonstrateMap(env);
+        demonstrateFlatMap(env);
+        demonstrateFilter(env);
+        demonstrateKeyBy(env);
+        demonstrateReduce(env);
+        demonstrateUnion(env);
+        demonstrateRichFunction(env);
+
+        return env.executeAsync("DataStream Basic Demo");
+    }
 }

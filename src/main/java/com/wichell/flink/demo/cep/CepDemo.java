@@ -549,4 +549,17 @@ public class CepDemo {
 
         env.execute("CEP Demo");
     }
+
+    /**
+     * 异步运行所有 CEP 演示，返回 JobClient 用于作业控制
+     */
+    public org.apache.flink.core.execution.JobClient runAllDemosAsync(StreamExecutionEnvironment env) throws Exception {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("    Flink CEP 复杂事件处理演示");
+        System.out.println("=".repeat(60));
+
+        demonstrateSimplePattern(env);
+
+        return env.executeAsync("CEP Demo");
+    }
 }

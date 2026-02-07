@@ -381,4 +381,36 @@ public class MysqlCdcDemo {
         com.wichell.flink.util.FlinkUtils.printSeparator("Flink MySQL CDC 演示");
         runDemo(env, "sync");
     }
+
+    /**
+     * 异步运行 CDC 演示，返回 JobClient 用于作业控制
+     *
+     * @param env      Flink 执行环境
+     * @param demoName 演示名称
+     * @return JobClient 用于取消作业
+     */
+    public org.apache.flink.core.execution.JobClient runDemoAsync(StreamExecutionEnvironment env, String demoName) throws Exception {
+        com.wichell.flink.util.FlinkUtils.printSeparator("Flink CDC 演示 - " + demoName);
+
+        switch (demoName.toLowerCase()) {
+            case "basic":
+                demonstrateBasicCdc(env);
+                break;
+            case "filter":
+                demonstrateCdcWithFilter(env);
+                break;
+            case "multi-table":
+                demonstrateMultiTableCdc(env);
+                break;
+            case "sync":
+                demonstrateCdcToMysql(env);
+                break;
+            default:
+                log.error("未知的演示名称: {}，可选值: basic, filter, multi-table, sync", demoName);
+                return null;
+        }
+
+        // 使用 executeAsync 返回 JobClient
+        return env.executeAsync("MySQL CDC Demo - " + demoName);
+    }
 }

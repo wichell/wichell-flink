@@ -538,4 +538,22 @@ public class ConnectorDemo {
 
         env.execute("Connector Demo");
     }
+
+    /**
+     * 异步运行连接器演示，返回 JobClient 用于作业控制
+     *
+     * @param env Flink 执行环境
+     * @return JobClient 用于取消作业
+     */
+    public org.apache.flink.core.execution.JobClient runAllDemosAsync(StreamExecutionEnvironment env) throws Exception {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("    Flink 连接器演示");
+        System.out.println("=".repeat(60));
+
+        // 演示自定义 Source（不需要外部依赖）
+        demonstrateCustomSource(env);
+
+        // 使用 executeAsync 返回 JobClient
+        return env.executeAsync("Connector Demo");
+    }
 }
