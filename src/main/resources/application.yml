@@ -51,6 +51,16 @@ flink:
     # 重启延迟（秒）
     delay: 10
 
+  # CDC 配置
+  cdc:
+    mysql:
+      hostname: localhost
+      port: 3306
+      username: root
+      password: 12345678
+      database: flink_demo
+      table: users
+
 # ============================================
 # Kafka 连接配置（示例）
 # ============================================

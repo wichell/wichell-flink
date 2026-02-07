@@ -252,6 +252,18 @@
             <version>8.2.0</version>
         </dependency>
 
+        <!-- ==================== Flink CDC 连接器 ==================== -->
+        <!--
+            Flink CDC MySQL Connector
+            用于捕获 MySQL 数据库的变更数据（基于 Binlog）
+            支持全量读取和增量同步
+        -->
+        <dependency>
+            <groupId>com.ververica</groupId>
+            <artifactId>flink-connector-mysql-cdc</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+
         <!-- ==================== 日志依赖 ==================== -->
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -356,6 +368,12 @@
 
     <!-- ==================== Maven 仓库配置 ==================== -->
     <repositories>
+        <!-- Maven Central - Flink CDC 依赖 -->
+        <repository>
+            <id>central</id>
+            <name>Maven Central</name>
+            <url>https://repo1.maven.org/maven2/</url>
+        </repository>
         <!-- Apache 仓库 - 用于获取最新的 Flink 版本 -->
         <repository>
             <id>apache.snapshots</id>

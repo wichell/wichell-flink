@@ -1,5 +1,6 @@
 package com.wichell.flink.service;
 
+import com.wichell.flink.demo.cdc.MysqlCdcDemo;
 import com.wichell.flink.demo.cep.CepDemo;
 import com.wichell.flink.demo.checkpoint.CheckpointDemo;
 import com.wichell.flink.demo.connector.ConnectorDemo;
@@ -36,6 +37,7 @@ public class FlinkJobService {
     private final TableApiDemo tableApiDemo;
     private final CepDemo cepDemo;
     private final ConnectorDemo connectorDemo;
+    private final MysqlCdcDemo mysqlCdcDemo;
 
     // 存储正在运行的作业
     private final ConcurrentHashMap<String, CompletableFuture<Void>> runningJobs = new ConcurrentHashMap<>();
@@ -186,6 +188,27 @@ public class FlinkJobService {
     }
 
     /**
+     * 运行 MySQL CDC 演示
+     *
+     * 演示内容：
+     * - 基于 Binlog 的变更数据捕获
+     * - 全量 + 增量同步
+     * - INSERT/UPDATE/DELETE 事件监听
+     *
+     * 注意：需要 MySQL 开启 Binlog 并配置正确的权限
+     */
+    public String runMysqlCdcDemo() {
+        return runDemo("mysql-cdc-demo", () -> {
+            log.info("启动 MySQL CDC 演示...");
+            try {
+                mysqlCdcDemo.runAllDemos(createNewEnv());
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    /**
      * 停止指定的演示作业
      *
      * @param jobName 作业名称
@@ -226,9 +249,17 @@ public class FlinkJobService {
 
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             try {
+                log.info("作业 {} 开始执行...", jobName);
                 demoRunner.run();
+                log.info("作业 {} 执行完成", jobName);
             } catch (Exception e) {
-                log.error("作业 {} 执行失败", jobName, e);
+                log.error("作业 {} 执行失败: {}", jobName, e.getMessage(), e);
+                // 打印完整的异常链
+                Throwable cause = e.getCause();
+                while (cause != null) {
+                    log.error("  Caused by: {}", cause.getMessage());
+                    cause = cause.getCause();
+                }
             } finally {
                 runningJobs.remove(jobName);
             }

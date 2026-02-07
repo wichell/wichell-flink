@@ -41,6 +41,7 @@ public class FlinkDemoController {
         endpoints.put("POST /api/flink/demo/tableapi", "运行 Table API 演示");
         endpoints.put("POST /api/flink/demo/cep", "运行 CEP 复杂事件处理演示");
         endpoints.put("POST /api/flink/demo/connector", "运行连接器演示");
+        endpoints.put("POST /api/flink/demo/cdc", "运行 MySQL CDC 演示");
         endpoints.put("DELETE /api/flink/demo/{jobName}", "停止指定作业");
         info.put("endpoints", endpoints);
 
@@ -52,6 +53,7 @@ public class FlinkDemoController {
         features.put("Table API & SQL", "Table API 操作、Flink SQL、UDF");
         features.put("CEP", "模式匹配、复杂事件处理、超时检测");
         features.put("Connectors", "Kafka、JDBC、File System 等连接器");
+        features.put("CDC", "MySQL Binlog 变更数据捕获、全量+增量同步");
         info.put("features", features);
 
         return info;
@@ -186,6 +188,24 @@ public class FlinkDemoController {
     @PostMapping("/demo/connector")
     public Map<String, String> runConnectorDemo() {
         return createResponse(flinkJobService.runConnectorDemo());
+    }
+
+    // ==================== CDC 演示 ====================
+
+    /**
+     * 运行 MySQL CDC 演示
+     *
+     * 演示 Flink CDC 变更数据捕获：
+     * - 基于 MySQL Binlog 的实时数据同步
+     * - 全量读取 + 增量捕获
+     * - INSERT/UPDATE/DELETE 事件监听
+     *
+     * 注意：需要 MySQL 开启 Binlog
+     * 配置项在 application.yml 的 flink.cdc.mysql 下
+     */
+    @PostMapping("/demo/cdc")
+    public Map<String, String> runMysqlCdcDemo() {
+        return createResponse(flinkJobService.runMysqlCdcDemo());
     }
 
     // ==================== 作业管理 ====================
