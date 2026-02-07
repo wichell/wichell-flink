@@ -151,6 +151,8 @@ public class WindowDemo {
                 .map(r -> String.format("[处理时间窗口] %s 最高温度: %.2f°C",
                         r.getSensorId(), r.getTemperature()));
 
+        processingTimeResult.print("处理时间窗口");
+
         // ==================== 基于计数的滚动窗口 ====================
         /*
          * 每收集 5 条数据触发一次计算
@@ -583,7 +585,7 @@ public class WindowDemo {
         com.wichell.flink.util.FlinkUtils.printSeparator("Flink 窗口操作演示 - " + demoName);
 
         switch (demoName.toLowerCase()) {
-                case "tumbling":
+            case "tumbling":
                 demonstrateTumblingWindow(env);
                 break;
             case "sliding":
@@ -614,8 +616,7 @@ public class WindowDemo {
 
         // 默认运行 Watermark 演示
         // 可根据需要修改为其他演示
-        runDemo(env, "watermark");
-
-        env.execute("Window Demo");
+        // 注意: runDemo 内部已调用 env.execute()，无需再次调用
+        runDemo(env, "tumbling");
     }
 }

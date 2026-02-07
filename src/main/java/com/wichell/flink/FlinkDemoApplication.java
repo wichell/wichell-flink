@@ -29,6 +29,7 @@ public class FlinkDemoApplication {
         System.out.println("===========================================");
         System.out.println("  Flink Demo Application Started!");
         System.out.println("  访问 http://localhost:8080 查看 API");
+        System.out.println("  Flink Web UI 端口请查看日志中的 'Web frontend listening at' 信息");
         System.out.println("===========================================");
     }
 }

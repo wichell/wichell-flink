@@ -77,6 +77,7 @@ public class SensorSourceFunction implements SourceFunction<SensorReading> {
     /**
      * 运行标志
      */
+    @Builder.Default
     private volatile boolean running = true;
 
     /**
