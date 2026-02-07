@@ -119,14 +119,33 @@ public class FlinkJobService {
      * - 状态恢复
      */
     public String runCheckpointDemo() {
-        return runDemoWithJobClient("checkpoint-demo", env -> {
-            log.info("启动检查点演示...");
+        return runCheckpointDemo(false);
+    }
+
+    /**
+     * 运行检查点演示（支持从检查点恢复）
+     *
+     * @param restoreFromCheckpoint 是否尝试从检查点恢复
+     * @return 启动结果
+     */
+    public String runCheckpointDemo(boolean restoreFromCheckpoint) {
+        String jobName = restoreFromCheckpoint ? "checkpoint-demo-restored" : "checkpoint-demo";
+        return runDemoWithJobClient(jobName, env -> {
+            log.info("启动检查点演示... restoreFromCheckpoint={}", restoreFromCheckpoint);
             try {
-                return checkpointDemo.runDemoAsync(env);
+                return checkpointDemo.runDemoAsync(env, restoreFromCheckpoint);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    /**
+     * 清理检查点目录
+     */
+    public String cleanCheckpoints() {
+        checkpointDemo.cleanCheckpoints();
+        return "检查点目录已清理";
     }
 
     /**

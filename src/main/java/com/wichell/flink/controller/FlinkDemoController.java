@@ -140,6 +140,28 @@ public class FlinkDemoController {
         return createResponse(flinkJobService.runCheckpointDemo());
     }
 
+    /**
+     * 从检查点恢复运行检查点演示
+     *
+     * 当应用被 kill 后重启，调用此接口可以从上次的检查点恢复状态
+     * 计数将从检查点保存的值继续，而不是从 1 开始
+     */
+    @PostMapping("/demo/checkpoint/restore")
+    public Map<String, String> runCheckpointDemoWithRestore() {
+        return createResponse(flinkJobService.runCheckpointDemo(true));
+    }
+
+    /**
+     * 清理检查点目录
+     *
+     * 删除 /tmp/flink-checkpoints 下的所有检查点文件
+     * 用于重新开始演示
+     */
+    @DeleteMapping("/demo/checkpoint/clean")
+    public Map<String, String> cleanCheckpoints() {
+        return createResponse(flinkJobService.cleanCheckpoints());
+    }
+
     // ==================== Table API 演示 ====================
 
     /**

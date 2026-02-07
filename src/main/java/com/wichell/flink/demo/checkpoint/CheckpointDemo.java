@@ -72,10 +72,69 @@ import java.util.Random;
  *    - 支持增量检查点
  *    - 内存占用更可控
  *
+ * ==================== 状态恢复说明 ====================
+ *
+ * 重要：手动关闭进程后重启，状态不会自动恢复！
+ *
+ * 自动恢复场景：
+ * - 作业内部 Task 失败，Flink 自动重启策略生效
+ * - 此时会自动从最新检查点恢复
+ *
+ * 手动恢复场景（需要指定检查点路径）：
+ * - 进程被 kill
+ * - 计划性停止后重启
+ * - 需要使用 flink run -s <checkpoint-path> 启动
+ *
  * @author wichell
  */
 @Component
 public class CheckpointDemo {
+
+    private static final String CHECKPOINT_DIR = "file:///tmp/flink-checkpoints";
+    private static final String JOB_NAME = "Checkpoint Demo";
+
+    /**
+     * 查找最新的检查点目录
+     *
+     * @return 最新检查点路径，如果没有则返回 null
+     */
+    private String findLatestCheckpoint() {
+        try {
+            java.io.File checkpointDir = new java.io.File("/tmp/flink-checkpoints");
+            if (!checkpointDir.exists()) {
+                return null;
+            }
+
+            // 查找所有作业目录
+            java.io.File[] jobDirs = checkpointDir.listFiles(java.io.File::isDirectory);
+            if (jobDirs == null || jobDirs.length == 0) {
+                return null;
+            }
+
+            // 找到最新的检查点
+            java.io.File latestCheckpoint = null;
+            long latestTime = 0;
+
+            for (java.io.File jobDir : jobDirs) {
+                java.io.File[] chkDirs = jobDir.listFiles(f -> f.isDirectory() && f.getName().startsWith("chk-"));
+                if (chkDirs != null) {
+                    for (java.io.File chkDir : chkDirs) {
+                        if (chkDir.lastModified() > latestTime) {
+                            latestTime = chkDir.lastModified();
+                            latestCheckpoint = chkDir;
+                        }
+                    }
+                }
+            }
+
+            if (latestCheckpoint != null) {
+                return latestCheckpoint.getAbsolutePath();
+            }
+        } catch (Exception e) {
+            System.out.println("查找检查点时出错: " + e.getMessage());
+        }
+        return null;
+    }
 
     /**
      * 演示检查点的基本配置
@@ -141,15 +200,15 @@ public class CheckpointDemo {
          * - S3：s3://bucket/path/to/checkpoints
          */
         checkpointConfig.setCheckpointStorage(
-                new FileSystemCheckpointStorage("file:///tmp/flink-checkpoints"));
+                new FileSystemCheckpointStorage(CHECKPOINT_DIR));
 
-        // ==================== 8. 设置外部化检查点 ====================
+        // ==================== 8. 设置外部化检查点（关键！）====================
         /*
          * 作业取消或完成后的检查点处理策略
          *
          * RETAIN_ON_CANCELLATION：
          * - 取消作业时保留检查点
-         * - 便于后续恢复作业
+         * - 便于后续恢复作业（手动重启场景必须设置）
          *
          * DELETE_ON_CANCELLATION：
          * - 取消作业时删除检查点
@@ -169,7 +228,18 @@ public class CheckpointDemo {
          */
         checkpointConfig.setTolerableCheckpointFailureNumber(3);
 
-        // ==================== 10. 启用非对齐检查点（可选）====================
+        // ==================== 10. 配置重启策略（关键！）====================
+        /*
+         * 配置作业失败后的重启策略
+         * 只有配置了重启策略，作业内部失败时才会自动从检查点恢复
+         */
+        env.setRestartStrategy(
+                org.apache.flink.api.common.restartstrategy.RestartStrategies.fixedDelayRestart(
+                        3,  // 最多重启 3 次
+                        org.apache.flink.api.common.time.Time.seconds(10)  // 每次重启间隔 10 秒
+                ));
+
+        // ==================== 11. 启用非对齐检查点（可选）====================
         /*
          * 非对齐检查点（Unaligned Checkpoints）
          * - 不需要 Barrier 对齐
@@ -187,7 +257,14 @@ public class CheckpointDemo {
         System.out.println("  - 间隔: 10 秒");
         System.out.println("  - 模式: EXACTLY_ONCE");
         System.out.println("  - 超时: 60 秒");
-        System.out.println("  - 存储: file:///tmp/flink-checkpoints");
+        System.out.println("  - 存储: " + CHECKPOINT_DIR);
+        System.out.println("  - 外部化: RETAIN_ON_CANCELLATION (作业停止后保留检查点)");
+        System.out.println("  - 重启策略: 固定延迟重启，最多 3 次，间隔 10 秒");
+        System.out.println();
+        System.out.println("【重要提示】");
+        System.out.println("  - 作业内部失败: 会自动从检查点恢复状态");
+        System.out.println("  - 手动停止/kill: 需要从检查点路径手动恢复");
+        System.out.println("  - 检查点目录: " + CHECKPOINT_DIR);
     }
 
     /**
@@ -392,6 +469,9 @@ public class CheckpointDemo {
         private ValueState<Double> lastTempState;
         private ValueState<Long> countState;
 
+        // 使用静态变量记录是否已触发过故障（JVM 级别，重启后保留）
+        private static volatile boolean hasTriggeredFailure = false;
+
         @Override
         public void open(Configuration parameters) throws Exception {
             // 状态描述符中的名称用于状态恢复时的匹配
@@ -424,6 +504,28 @@ public class CheckpointDemo {
                         count, reading.getSensorId(), reading.getTemperature()
                 ));
             }
+
+            // ==================== 模拟故障：计数到 9 时触发（仅一次）====================
+            // 使用静态变量确保整个 JVM 生命周期内只触发一次
+            // 这样 Flink 重启后不会再次触发，可以观察到状态恢复效果
+            //if (count == 9 && !hasTriggeredFailure) {
+            //    hasTriggeredFailure = true;
+            //    System.out.println("\n" + "=".repeat(50));
+            //    System.out.println("⚠️  模拟故障触发！");
+            //    System.out.println("    当前计数: " + count);
+            //    System.out.println("    传感器: " + reading.getSensorId());
+            //    System.out.println("    Flink 将自动重启并从检查点恢复状态");
+            //    System.out.println("    恢复后计数应该从检查点保存的值继续，而不是从 1 开始");
+            //    System.out.println("=".repeat(50) + "\n");
+            //    throw new RuntimeException("模拟故障：计数达到 9，测试检查点恢复");
+            //}
+        }
+
+        /**
+         * 重置故障触发标志（用于下次演示）
+         */
+        public static void resetFailureFlag() {
+            hasTriggeredFailure = false;
         }
     }
 
@@ -498,13 +600,78 @@ public class CheckpointDemo {
      * 异步运行检查点演示，返回 JobClient 用于作业控制
      */
     public org.apache.flink.core.execution.JobClient runDemoAsync(StreamExecutionEnvironment env) throws Exception {
+        return runDemoAsync(env, false);
+    }
+
+    /**
+     * 异步运行检查点演示，支持从检查点恢复
+     *
+     * @param env             执行环境
+     * @param restoreFromCheckpoint 是否尝试从检查点恢复
+     * @return JobClient
+     */
+    public org.apache.flink.core.execution.JobClient runDemoAsync(StreamExecutionEnvironment env, boolean restoreFromCheckpoint) throws Exception {
         System.out.println("\n" + "=".repeat(60));
         System.out.println("    Flink 检查点演示");
         System.out.println("=".repeat(60));
+
+        // 尝试从检查点恢复
+        if (restoreFromCheckpoint) {
+            String latestCheckpoint = findLatestCheckpoint();
+            if (latestCheckpoint != null) {
+                System.out.println("\n✅ 找到检查点，将从以下位置恢复:");
+                System.out.println("   " + latestCheckpoint);
+                System.out.println();
+
+                // 重置故障标志，允许观察恢复后的状态
+                StatefulTemperatureProcessor.resetFailureFlag();
+
+                // 配置从检查点恢复
+                org.apache.flink.configuration.Configuration config = new org.apache.flink.configuration.Configuration();
+                config.setString("execution.savepoint.path", latestCheckpoint);
+
+                // 使用配置创建新的环境
+                env = StreamExecutionEnvironment.getExecutionEnvironment(config);
+                env.setParallelism(2);
+            } else {
+                System.out.println("\n⚠️ 未找到检查点，将从头开始运行");
+                System.out.println("   检查点目录: " + CHECKPOINT_DIR);
+                System.out.println();
+            }
+        }
 
         demonstrateCheckpointConfig(env);
         demonstrateStateRecovery(env);
 
         return env.executeAsync("Checkpoint Demo");
+    }
+
+    /**
+     * 清理检查点目录
+     */
+    public void cleanCheckpoints() {
+        try {
+            java.io.File checkpointDir = new java.io.File("/tmp/flink-checkpoints");
+            if (checkpointDir.exists()) {
+                deleteDirectory(checkpointDir);
+                System.out.println("✅ 检查点目录已清理: " + checkpointDir.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            System.out.println("清理检查点时出错: " + e.getMessage());
+        }
+    }
+
+    private void deleteDirectory(java.io.File dir) {
+        java.io.File[] files = dir.listFiles();
+        if (files != null) {
+            for (java.io.File file : files) {
+                if (file.isDirectory()) {
+                    deleteDirectory(file);
+                } else {
+                    file.delete();
+                }
+            }
+        }
+        dir.delete();
     }
 }
