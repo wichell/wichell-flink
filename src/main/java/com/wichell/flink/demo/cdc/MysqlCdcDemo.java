@@ -5,6 +5,7 @@ import com.ververica.cdc.connectors.mysql.table.StartupOptions;
 import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
@@ -16,43 +17,44 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.Serial;
 import java.sql.Timestamp;
 import java.time.Instant;
 
 /**
  * Flink CDC MySQL 演示
- *
+ * <p>
  * 通过 MySQL Binlog 捕获数据库变更事件（Change Data Capture）
- *
+ * <p>
  * ==================== CDC 核心概念 ====================
- *
+ * <p>
  * 1. 什么是 CDC？
  *    - Change Data Capture（变更数据捕获）
  *    - 实时捕获数据库的增删改操作
  *    - 基于数据库日志（如 MySQL Binlog）实现
- *
+ * <p>
  * 2. Flink CDC 的优势：
  *    - 精确一次语义（Exactly-Once）
  *    - 无锁读取，不影响数据库性能
  *    - 支持全量 + 增量一体化同步
  *    - 支持断点续传
- *
+ * <p>
  * 3. 启动模式（StartupOptions）：
  *    - initial(): 先全量读取，再增量同步（默认）
  *    - earliest(): 从最早的 Binlog 开始读取
  *    - latest(): 只读取最新的变更
  *    - specificOffset(): 从指定位置开始
  *    - timestamp(): 从指定时间戳开始
- *
+ * <p>
  * ==================== MySQL 配置要求 ====================
- *
+ * <p>
  * 1. 开启 Binlog：
  *    [mysqld]
  *    server-id = 1
  *    log_bin = mysql-bin
  *    binlog_format = ROW
  *    binlog_row_image = FULL
- *
+ * <p>
  * 2. 创建 CDC 用户并授权：
  *    CREATE USER 'flink_cdc'@'%' IDENTIFIED BY 'flink_cdc_password';
  *    GRANT SELECT, RELOAD, SHOW DATABASES, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'flink_cdc'@'%';
@@ -306,7 +308,9 @@ public class MysqlCdcDemo {
     /**
      * 用于同步的用户记录（使用 POJO 而非 record，因为 Flink Kryo 不支持 Java Record）
      */
+    @Setter
     public static class UserSyncRecord implements java.io.Serializable {
+        @Serial
         private static final long serialVersionUID = 1L;
 
         private long id;
@@ -330,12 +334,6 @@ public class MysqlCdcDemo {
         public String email() { return email; }
         public String operation() { return operation; }
         public Timestamp opTs() { return opTs; }
-
-        public void setId(long id) { this.id = id; }
-        public void setName(String name) { this.name = name; }
-        public void setEmail(String email) { this.email = email; }
-        public void setOperation(String operation) { this.operation = operation; }
-        public void setOpTs(Timestamp opTs) { this.opTs = opTs; }
 
         @Override
         public String toString() {
